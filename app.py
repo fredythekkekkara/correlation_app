@@ -2,13 +2,14 @@ import streamlit as st
 from multiapp import MultiApp
 from apps import home, data, model # import your app modules here
 import sys
-from config.config import processSteps, fileResolution, fileTypes
+from config.config import processSteps, fileResolution, fileTypes, plotType
 import os
 from general_functions import files, metadata
 from general_functions import constants as c
 
 from datetime import datetime
 
+import numpy as np
 app = MultiApp()
 
 # st.markdown("""
@@ -25,6 +26,7 @@ app = MultiApp()
 # # The main app
 # app.run()
 processOptions = [step.value for step in processSteps]
+plotTypes = [plot_type.value for plot_type in plotType]
 st.sidebar.title('Project')
 projectName = st.sidebar.text_input('Project Name', value='', key='projectName')
 projectlocation = st.sidebar.text_input('Project Location', value='', key='projectlocation')
@@ -186,7 +188,20 @@ elif processLine == processSteps.dataConfiguration.value:
                                               fileResolutions, 
                                               key='resolution'+str(params+1))
             
-    
+elif processLine == processSteps.dataVisualisation.value:
+    st.title(processLine)   
+    startDate = st.date_input('Start date of anlysis', min_value=datetime(1995, 1, 1))
+    endDate = st.date_input('End date of anlysis', min_value=datetime(1995, 1, 1))
+    plotNums = 1
+    for params in range(plotNums):
+        with st.container():
+            st.header('Plot Configuration'+str(params+1))
+            name = st.text_input('Plot Name', value='', key='plot'+str(params+1))
+            location = st.file_uploader('Select a File')
+            with st.expander("Plot " + str(params + 1)):
+                plotTypeSelector = st.selectbox('', plotTypes)
+                if plotTypeSelector == plotType.line.value:
+                    location = st.text_input('File location', value='', key='plotFileLoc'+str(params+1))
     
 if processLine == processSteps.dataForamtting.value:
     st.error('Wrong choice')

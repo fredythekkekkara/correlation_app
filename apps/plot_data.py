@@ -14,7 +14,9 @@ import numpy as np
 import datetime as dt
 from datetime import datetime
 import matplotlib.pyplot as plt
+import matplotlib as mpl
 from ast import literal_eval
+from math import ceil, floor
 
 process = 'plot_data'
 projectFolder = ''
@@ -124,6 +126,10 @@ def getZAxisLabel(metadata):
 def getTitle(metadata):
     title = metadata['title'] if 'title' in metadata else ''
     return title
+    
+def getNumberOfColors(metadata):
+    numberOfColors = metadata['numberOfColors'] if 'numberOfColors' in metadata else 0
+    return numberOfColors
 
 def getDateIndexColumn(df):
     indexValue = None
@@ -161,54 +167,42 @@ def clipDataByDate(data, startDate, endDate):
     # data = data[(pd.to_datetime(data.index.get_level_values(dateIndexColumn)).date >= startDate) & (pd.to_datetime(data.index.get_level_values(dateIndexColumn)).date <= endDate)]
     return data
 
+def findBounds(a, b):
+    boundValue = a if a > b else b
+    if a < 0:
+        a = a * -1
+    if b < 0:
+        b = b* -1
+    boundValue = a if a > b else b
+    bounds = np.linspace(-boundValue,boundValue,10)
+    print(boundValue)
+    return bounds
+
+def getCorrelationBounds(maxValue, minValue):
+    print(maxValue, minValue)
+    maxValue = maxValue + 0.1
+    minValue = minValue - 0.1
+    maxValue = round(maxValue, 1)
+    minValue = round(minValue, 1)
+    # print(maxValue, minValue)
+    bounds = findBounds(minValue, maxValue)
+    # bounds = np.linspace(minValue,maxValue,10)
+    # bounds = np.linspace(-1,+1,20)
     
-# def plotGraph():
-    
-#     fig, (ax1, ax2) = plt.subplots(2, 1, sharex=True, figsize=(12, 8))
+    return bounds
 
-    
-#     ax1.fill_between(x, y1_corr_f10, y2_corr_f10, alpha=.5, linewidth=0, color='gray', label='95% confidence interval')
-#     ax1.plot(x, corr_f10, linewidth=1, label='cross correlation tec x f10.7')
-#     ax1.plot(x, g_corr_f10, linewidth=1, color='r', label='guassian window normalisation')
-#     plt.grid(True)
-#     ax1.set(ylim=(-1, 1))
-#     ax1.set_title('cross correlation tec X f10.7')
-#     ax1.set_xlabel('day of year')
-#     ax1.legend(loc="lower left")
-    
-#     ax2.fill_between(x, y1_corr_sws, y2_corr_sws, alpha=.5, linewidth=0, color='gray', label='95% confidence interval')
-#     ax2.plot(x, corr_sws, linewidth=1, label='cross correlation tec x solar wind')
-#     ax2.plot(x, g_corr_sws, linewidth=1, color='r', label='guassian window normalisation')
-#     ax2.set(ylim=(-1, 1))
-#     ax2.set_title('cross correlation tec X solar wind speed')
-#     ax2.set_xlabel('day of year')
-#     fig.tight_layout()
-    
-#     plt.legend(loc="upper left")
-#     plt.show()
-#     return True
+def getDataClippingEnabled(metadata):
+    isDataClippingEnabled = metadata['clipDataByDate'] if 'clipDataByDate' in metadata else False
+    if isDataClippingEnabled == 1:
+        isDataClippingEnabled = True
+    else:
+        isDataClippingEnabled = False
+    return isDataClippingEnabled
 
 
-# latitude = 60
-
-
-# corr_tec_f10_7 = readH5File(_corr_tec_x_f10_7_file_path)
-# norm_corr_tec_f10_7 = readH5File(_corr_norm_tec_x_f10_7_file_path)
-# corr_up_limit_tec_f10_7 = readH5File(_corr_tec_f10_7_upper_c_of_interval)
-# corr_low_limit_tec_f10_7 = readH5File(_corr_tec_f10_7_lower_cof_interval)
-
-# corr_tec_f10_7 = corr_tec_f10_7[latitude]
-# norm_corr_tec_f10_7 = norm_corr_tec_f10_7[latitude]
-# corr_up_limit_tec_f10_7 = corr_up_limit_tec_f10_7[latitude]
-# corr_low_limit_tec_f10_7 = corr_low_limit_tec_f10_7[latitude]
-
-# df = pd.DataFrame()
-# df['original'] = corr_tec_f10_7
-# df['normalised'] = norm_corr_tec_f10_7
-# df['upper_limit'] = corr_up_limit_tec_f10_7
-# df['lower_limit'] = corr_low_limit_tec_f10_7
-# plotGraph(df)
-
+def getColorMap(metadata):
+    colorMap = metadata['colorMap'] if 'colorMap' in metadata else 'seismic'
+    return colorMap
 
 
 if __name__ == "__main__":
@@ -236,6 +230,9 @@ if __name__ == "__main__":
         xAxisLabel = getXAxisLabel(metadata)
         yAxisLabel = getYAxisLabel(metadata)
         zAxisLabel = getZAxisLabel(metadata)
+        isDataClippingEnabled = getDataClippingEnabled(metadata)
+        colorMap = getColorMap(metadata)
+        numberOfColors = getNumberOfColors(metadata)
         saveLocation = getProcessSaveLocation(name)
         os.makedirs(saveLocation, exist_ok = True)
         fig = graph = None 
@@ -251,6 +248,7 @@ if __name__ == "__main__":
                 data = fop.readH5File(dataFileLocation)
                 data = clipDataByDate(data, startDate, endDate)
                 data = data.reset_index()
+                print(data)
                 xAxis = data[xAxisColumn]
                 yAxis = data[yAxisColumn]
                 color = getColorValue(dataFile)
@@ -282,29 +280,69 @@ if __name__ == "__main__":
                 plt.grid(True)
                 plt.legend(loc="upper left")
             elif dataPlotType == 'colorBar':
+                yAxisColumn = getYAxis(dataFile)
                 if fig == None:
                     fig = plt.figure(figsize=(figWidth, figHeight), dpi=200)
                 dataFileLocation = getDataFileLocation(dataFile)
                 data = fop.readH5File(dataFileLocation)
+                if isDataClippingEnabled:
+                    data = clipDataByDate(data, startDate, endDate)
+                print('________________________RAW DATA___________________', title)
+                print(data)   
+                print('________________________END___________________')
                 data = data.T
-                print(data)
-                
-                indexValues = data.index.values
-                print(indexValues)
-                tiks = range(0,len(indexValues),10)
+                print('________________________ DATA T ___________________')
+                print(data)   
+                print('________________________END___________________')
+                data = data.sort_index(axis=0, ascending=False)
+                indexValues = data.index.values 
+                #print(indexValues)
+                if yAxisColumn != "":
+                    indexValues = data.index.get_level_values(yAxisColumn)
+                tiks = range(0,len(indexValues),2)
+                #tiks = range(0,len(indexValues),8)
                 lbl = indexValues[tiks]
+                bounds = getCorrelationBounds(data.max().max(), data.min().min()) 
                 
                 x_tiks = [0, 31, 60, 91, 121, 152, 182, 213, 244, 274, 305, 335]#range(0, 366, 30)
                 x_bl = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 
                         'August', 'September', 'October', 'November', 'December']
+                cmaps = mpl.cm.get_cmap(colorMap)   
+                if numberOfColors > 0:
+                    cmaps = mpl.cm.get_cmap(colorMap, numberOfColors)
     
                 if graph == None:
-                    graph = plt.imshow(data, cmap='hot')
-                cb = plt.colorbar(graph, shrink = 0.5)
+                    graph = plt.imshow(data, cmap = cmaps, vmin = bounds.min(), vmax=bounds.max(), aspect='auto')
+                    #graph = plt.imshow(data, cmap = colorMap, vmin = bounds.min(), vmax=bounds.max())
+                    
+                
+                cb = plt.colorbar(graph, shrink = 0.5, boundaries=bounds)
                 cb.set_label(zAxisLabel)
                 plt.yticks(ticks=tiks, labels=lbl)
                 plt.xticks(ticks=x_tiks, labels=x_bl, rotation=45)
-                print(dataPlotType)
+                ##print(dataPlotType)
+                
+            elif dataPlotType == 'contour':
+                if fig == None:
+                    fig = plt.figure(figsize=(figWidth, figHeight), dpi=200)
+                dataFileLocation = getDataFileLocation(dataFile)
+                data = fop.readH5File(dataFileLocation)
+                if isDataClippingEnabled:
+                    data = clipDataByDate(data, startDate, endDate)
+                
+                data = data.T
+                
+                data = data.sort_index(axis=0, ascending=False)
+                indexValues = data.index.values
+                if yAxisColumn != "":
+                    indexValues = data.index.get_level_values(yAxisColumn)
+                if graph == None:
+                    graph = plt.imshow(data, cmap = colorMap, vmin = bounds.min(), vmax=bounds.max(), aspect='auto')
+                else:
+                    contour = plt.contour(data, levels= 1, colors='black')
+                    plt.clabel(contour, inline=True, fontsize=8)
+                    
+                
                 
         # graph.set_xlabel(xAxisLabel)
         # graph.set_ylabel(yAxisLabel)

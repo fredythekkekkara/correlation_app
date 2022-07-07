@@ -90,6 +90,47 @@ def getReferenceValueFilePath(metadata):
     fileLocation = metadata['referenceValueFile'] if 'referenceValueFile' in metadata else ''
     return fileLocation
 
+def getAlterOperation(metadata):
+    alterOperation = metadata['alterOperation'] if 'alterOperation' in metadata else ''
+    return alterOperation
+
+def getDataLevel(metadata):
+    dataLevel = metadata['dataLevel'] if 'dataLevel' in metadata else ''
+    return dataLevel
+
+def getFromDataLevel(metadata):
+    dataLevel = metadata['fromDataLevel'] if 'fromDataLevel' in metadata else ''
+    return dataLevel
+
+def getToDataLevel(metadata):
+    dataLevel = metadata['toDataLevel'] if 'toDataLevel' in metadata else ''
+    return dataLevel
+
+
+def getDateFormat(metadata):
+    dateFormat = metadata['dateFormat'] if 'dateFormat' in metadata else ''
+    return dateFormat
+
+def getDataElement(metadata):
+    dataElement = metadata['dataElement'] if 'dataElement' in metadata else ''
+    return dataElement
+
+def getDataSpecification(metadata):
+    dataspec = metadata['DataSpecification'] if 'DataSpecification' in metadata else ''
+    return dataspec
+
+def getUpperLimitFile(metadata):
+    upperLimitFile = metadata['upperLimitFile'] if 'upperLimitFile' in metadata else ''
+    return upperLimitFile
+
+def getLowerLimitFile(metadata):
+    lowerLimitFile = metadata['lowerLimitFile'] if 'lowerLimitFile' in metadata else ''
+    return lowerLimitFile
+
+def getInterpolationLimit(metadata):
+    limit = metadata['limit'] if 'limit' in metadata else None
+    return limit
+
 def getValueFromDict(metadata, key):
     val = metadata[key] if key in metadata else ''
     return val
@@ -174,9 +215,10 @@ def getConsecutiveFilesCombined(filePath, year):
     
 def redirectToOperation(metadata):
     operation = getOperation(metadata)
+    print(operation)
+    print('-----------------------------------------------------')
     if operation == 'moving_average':
         findMovingAverage(metadata)
-        print(operation)
     elif operation == 'relative_difference':
         findRelativeDifference(metadata)
         print(operation)
@@ -199,9 +241,193 @@ def redirectToOperation(metadata):
         extractColumnData(metadata)
     elif operation == 'interpolate':
         interpolateData(metadata)
+    elif operation == 'alter_data_level':
+        alterDataLevels(metadata)
+    elif operation == 'swap_column_level':
+        swapColumnIndexLevel(metadata)
+    elif operation == 'extract_data_by_datetime':
+        extarctDatabyDateTime(metadata)
+    elif operation == 'confidence_interval_polarity':
+        generateConfidenceIntervalPolarityMatrix(metadata)
         
-def fillNaNValueWithInterpolation(data):
-    data = data.interpolate().bfill()
+    print('--------------------------OPERATION END---------------------------')
+        
+
+def generatePolarityMatrix(data_1, data_2):
+    
+    positiveData_1 = data_1 >= 0
+    positiveData_2 = data_2 >= 0
+    
+    negativeData_1 = data_1 < 0
+    negativeData_2 = data_2 < 0
+    
+    
+    polarityData = data_1.mask(positiveData_1 & positiveData_2 == True, other=1)
+    polarityData = polarityData.mask(negativeData_1 & negativeData_2 == True, other=-1)
+    polarityData = polarityData.mask(positiveData_1 & negativeData_2 == True, other=0)
+    polarityData = polarityData.mask(negativeData_1 & positiveData_2 == True, other=0)
+    
+    return polarityData
+    
+def generateConfidenceIntervalPolarityMatrix(metadata):
+    
+    fileFrequency = getFileFrequency(metadata)
+    filePath = getDataFileLocation(metadata)
+    operation = getOperation(metadata)
+    name = getDataName(metadata)
+    saveLocation = getProcessSaveLocation(operation, name)
+    
+    
+    
+    upperLimitFile = getUpperLimitFile(metadata)
+    lowerLimitFile = getLowerLimitFile(metadata)
+    
+    
+    
+    os.makedirs(saveLocation, exist_ok = True)    
+    data = pd.DataFrame()
+    dataAltered = pd.DataFrame()
+    if fileFrequency == 'yearly':
+        
+        for year in analysisPeriod:
+            fileName = str(year) + '.h5'
+            upperLimitData = getConsecutiveFilesCombined(upperLimitFile, year)
+            lowerLimitData = getConsecutiveFilesCombined(lowerLimitFile, year)
+            
+            #dateIndexColumn = getDateIndexColumn(data)
+            #timeIndexColumn = getTimeIndexColumn(data)
+            #indexColumn = dateIndexColumn
+            
+            data = generatePolarityMatrix(upperLimitData, lowerLimitData)
+            dateIndexColumn = getDateIndexColumn(data)
+            
+            data = data[pd.to_datetime(data.index.get_level_values(dateIndexColumn)).year == year]
+            saveFileLocation = os.path.join(saveLocation, fileName)
+            fop.saveToHDFFile(data, saveFileLocation)
+            print('saved', saveFileLocation)
+    elif fileFrequency == 'single':
+        upperLimitData = fop.readH5File(upperLimitFile)
+        lowerLimitData = fop.readH5File(lowerLimitFile)
+        
+        data = generatePolarityMatrix(upperLimitData, lowerLimitData)
+        
+        fileName = name+'.h5'
+        saveFileLocation = os.path.join(saveLocation, fileName)
+        fop.saveToHDFFile(data, saveFileLocation)
+        print('saved', saveFileLocation)
+    
+    
+    
+    
+def extarctDataByDateElement(data, dateElement, value, indexColumn, dateFormat):
+    data = data
+    if dateElement == 'date':
+        data = data[pd.to_datetime(data.index.get_level_values(indexColumn), format=dateFormat).date == value]
+    elif dateElement == 'day':
+        data = data[pd.to_datetime(data.index.get_level_values(indexColumn), format=dateFormat).day == value]
+    elif dateElement == 'month':
+        data = data[pd.to_datetime(data.index.get_level_values(indexColumn), format=dateFormat).day == value]
+    elif dateElement == 'year':
+        data = data[pd.to_datetime(data.index.get_level_values(indexColumn), format=dateFormat).day == value]
+    elif dateElement == 'hour':
+        data = data[pd.to_datetime(data.index.get_level_values(indexColumn), format=dateFormat).hour == value]
+    elif dateElement == 'minute':
+        data = data[pd.to_datetime(data.index.get_level_values(indexColumn), format=dateFormat).minute == value]
+    elif dateElement == 'time':
+        data = data[pd.to_datetime(data.index.get_level_values(indexColumn), format=dateFormat).time == value]
+        
+    return data
+        
+def extarctDatabyDateTime(metadata):
+    fileFrequency = getFileFrequency(metadata)
+    filePath = getDataFileLocation(metadata)
+    operation = getOperation(metadata)
+    name = getDataName(metadata)
+    saveLocation = getProcessSaveLocation(operation, name)
+    
+    
+    
+    dateFormat = getDateFormat(metadata)
+    dataElement = getDataElement(metadata)
+    dataSpecification = getDataSpecification(metadata)
+    
+    
+      
+    
+    
+    os.makedirs(saveLocation, exist_ok = True)    
+    data = pd.DataFrame()
+    dataAltered = pd.DataFrame()
+    if fileFrequency == 'yearly':
+        
+        for year in analysisPeriod:
+            fileName = str(year) + '.h5'
+            data = getConsecutiveFilesCombined(filePath, year)
+            dateIndexColumn = getDateIndexColumn(data)
+            timeIndexColumn = getTimeIndexColumn(data)
+            indexColumn = dateIndexColumn
+            if dataElement in ('day', 'month', 'year', 'date'):
+                indexColumn = dateIndexColumn
+            else:
+                indexColumn = timeIndexColumn
+            
+            data = extarctDataByDateElement(data, dataElement, dataSpecification, indexColumn, dateFormat)
+            
+            data = data[pd.to_datetime(data.index.get_level_values(dateIndexColumn)).year == year]
+            saveFileLocation = os.path.join(saveLocation, fileName)
+            fop.saveToHDFFile(data, saveFileLocation)
+            print('saved', saveFileLocation)
+    elif fileFrequency == 'single':
+        data = fop.readH5File(filePath)
+        dateIndexColumn = getDateIndexColumn(data)
+        timeIndexColumn = getTimeIndexColumn(data)
+        indexColumn = dateIndexColumn
+        if dataElement in ('day', 'month', 'year', 'date'):
+            indexColumn = dateIndexColumn
+        else:
+            indexColumn = timeIndexColumn
+        
+        data = extarctDataByDateElement(data, dataElement, dataSpecification, indexColumn, dateFormat)
+        fileName = name+'.h5'
+        saveFileLocation = os.path.join(saveLocation, fileName)
+        fop.saveToHDFFile(data, saveFileLocation)
+        print('saved', saveFileLocation)
+    
+        
+def swapColumnIndexLevel(metadata):
+    fileFrequency = getFileFrequency(metadata)
+    filePath = getDataFileLocation(metadata)
+    operation = getOperation(metadata)
+    name = getDataName(metadata)
+    saveLocation = getProcessSaveLocation(operation, name)
+    fromDataLevel = getFromDataLevel(metadata)
+    toDataLevel = getToDataLevel(metadata)
+    os.makedirs(saveLocation, exist_ok = True)    
+    data = pd.DataFrame()
+    dataAltered = pd.DataFrame()
+    if fileFrequency == 'yearly':
+        
+        for year in analysisPeriod:
+            fileName = str(year) + '.h5'
+            data = getConsecutiveFilesCombined(filePath, year)
+            dateTimeIndexColumn = getDateIndexColumn(data)
+            data.columns = data.columns.swaplevel(fromDataLevel, toDataLevel)
+            data = data[pd.to_datetime(data.index.get_level_values(dateTimeIndexColumn)).year == year]
+            saveFileLocation = os.path.join(saveLocation, fileName)
+            fop.saveToHDFFile(data, saveFileLocation)
+            print('saved', saveFileLocation)
+    elif fileFrequency == 'single':
+        data = fop.readH5File(filePath)
+        dateTimeIndexColumn = getDateIndexColumn(data)
+        data.columns = data.columns.swaplevel(fromDataLevel, toDataLevel)
+        fileName = name+'.h5'
+        saveFileLocation = os.path.join(saveLocation, fileName)
+        fop.saveToHDFFile(data, saveFileLocation)
+        print('saved', saveFileLocation)
+    
+        
+def fillNaNValueWithInterpolation(data, limit=None):
+    data = data.interpolate(limit=limit)
     data.head(4)
  
     return data  
@@ -214,6 +440,7 @@ def interpolateData(metadata):
     operation = getOperation(metadata)
     name = getDataName(metadata)
     groupBy = getGroupByArgument(metadata)
+    interpolationLimit = getInterpolationLimit(metadata)
     saveLocation = getProcessSaveLocation(operation, name)
     os.makedirs(saveLocation, exist_ok = True)    
     data = pd.DataFrame()
@@ -223,8 +450,9 @@ def interpolateData(metadata):
         for year in analysisPeriod:
             data = getConsecutiveFilesCombined(filePath, year)
             dateTimeIndexColumn = getDateIndexColumn(data)
-            print(dateTimeIndexColumn)
-            print(data)
+            #print(dateTimeIndexColumn)
+            #print(data)
+            data = fillNaNValueWithInterpolation(data, interpolationLimit)
             data = data[pd.to_datetime(data.index.get_level_values(dateTimeIndexColumn)).year == year]
             extractedData = pd.concat([extractedData, data])   
             
@@ -235,13 +463,56 @@ def interpolateData(metadata):
     elif fileFrequency == 'single':
         data = fop.readH5File(filePath)
         dateTimeIndexColumn = getDateIndexColumn(data)
-        print(dateTimeIndexColumn)
-        data = fillNaNValueWithInterpolation(data)
+        #print(dateTimeIndexColumn)
+        data = fillNaNValueWithInterpolation(data, interpolationLimit)
                     
         fileName = name+'.h5'
         saveFileLocation = os.path.join(saveLocation, fileName)
         fop.saveToHDFFile(data, saveFileLocation)
         
+def alterDataLevels(metadata):
+    fileFrequency = getFileFrequency(metadata)
+    filePath = getDataFileLocation(metadata)
+    operation = getOperation(metadata)
+    name = getDataName(metadata)
+    saveLocation = getProcessSaveLocation(operation, name)
+    dataLevel = getDataLevel(metadata)
+    alterOperation = getAlterOperation(metadata)
+    os.makedirs(saveLocation, exist_ok = True)    
+    data = pd.DataFrame()
+    dataAltered = pd.DataFrame()
+    if fileFrequency == 'yearly':
+        
+        for year in analysisPeriod:
+            fileName = str(year) + '.h5'
+            data = getConsecutiveFilesCombined(filePath, year)
+            dateTimeIndexColumn = getDateIndexColumn(data)
+            if alterOperation == 'stack':
+                data = data.stack(level=dataLevel)
+            elif alterOperation == 'unstack':
+                data = data.unstack(level=dataLevel)
+            data = data[pd.to_datetime(data.index.get_level_values(dateTimeIndexColumn)).year == year]
+            saveFileLocation = os.path.join(saveLocation, fileName)
+            fop.saveToHDFFile(data, saveFileLocation)
+            print('saved', saveFileLocation)
+    elif fileFrequency == 'single':
+        data = fop.readH5File(filePath)
+        dateTimeIndexColumn = getDateIndexColumn(data)
+        if alterOperation == 'stack':
+            data = data.stack(level=dataLevel)
+        elif alterOperation == 'unstack':
+            data = data.unstack(level=dataLevel)
+                    
+        fileName = name+'.h5'
+        saveFileLocation = os.path.join(saveLocation, fileName)
+        fop.saveToHDFFile(data, saveFileLocation)
+        print('saved', saveFileLocation)
+        
+            
+    
+        
+        
+
         
 def extractColumnData(metadata):
     fileFrequency = getFileFrequency(metadata)
@@ -253,7 +524,9 @@ def extractColumnData(metadata):
     groupBy = getGroupByArgument(metadata)
     saveLocation = getProcessSaveLocation(operation, name)
     extractColumns = getValueFromDict(metadata, 'columns')
+    print('colums to be extracted: ', extractColumns)
     extractColumns = literal_eval(extractColumns)
+    print('columns to be extarcted formatted: ', extractColumns)
     os.makedirs(saveLocation, exist_ok = True)    
     data = pd.DataFrame()
     extractedData = pd.DataFrame()
@@ -266,7 +539,7 @@ def extractColumnData(metadata):
             # data = data[data.columns[extractColumns]]
             data = data[pd.to_datetime(data.index.get_level_values(dateTimeIndexColumn)).year == year]
             extractedData = pd.concat([extractedData, data]) 
-            print(extractedData)
+            # print(extractedData)
             
         fileName = name +'.h5'
         saveFileLocation = os.path.join(saveLocation, fileName)
@@ -275,7 +548,7 @@ def extractColumnData(metadata):
     elif fileFrequency == 'single':
         data = fop.readH5File(filePath)
         dateTimeIndexColumn = getDateIndexColumn(data)
-        print(dateTimeIndexColumn)
+        #print(dateTimeIndexColumn)
         data = data[extractColumns]
                     
         fileName = name+'.h5'
@@ -292,26 +565,26 @@ def movingAverage(data, dateTimeIndexColumn, groupBy=None, minPeriod=1, windowSi
         movingAvg = data.groupby([timeIndexColumn], 
                                  as_index=False).rolling(window=windowSize, 
                                                          min_periods=minPeriod).mean().drop(timeIndexColumn, 
-                                                                                            axis=1)
-                                                                                                  
+                                                                                            axis=1)                                                                                                  
     else:
-        print(data)
+        #print(data)
         movingAvg = data.rolling(window=windowSize, 
                                  min_periods=minPeriod).mean()
-      
+    print(movingAvg)  
     return movingAvg
 
-def relativeDifference(referenceValue, newValue):
-    diffRel = ((referenceValue - newValue)/newValue)*100
+def relativeDifference(finalValue, initialValue):
+    print(finalValue, initialValue)
+    diffRel = ((finalValue - initialValue)/initialValue)*100
     return diffRel
 
 
 def findRelativeDifference(metadata):
     fileFrequency = getFileFrequency(metadata)
     newValueFile = getNewValueFilePath(metadata)
-    print(newValueFile)
+    #print(newValueFile)
     referenceValueFile = getReferenceValueFilePath(metadata)
-    print(referenceValueFile)
+    #print(referenceValueFile)
     operation = getOperation(metadata)
     name = getDataName(metadata)
     groupBy = getGroupByArgument(metadata)
@@ -322,29 +595,29 @@ def findRelativeDifference(metadata):
             fileName = str(year) + '.h5'
             newValueFileLocation = os.path.join(newValueFile, fileName)
             referenceValueFileLocation = os.path.join(referenceValueFile, fileName)
-            print(newValueFileLocation)
-            print(referenceValueFileLocation)
+            #print(newValueFileLocation)
+            #print(referenceValueFileLocation)
             newValueData = fop.readH5File(newValueFileLocation)
             referenceValueData = fop.readH5File(referenceValueFileLocation)
-            print('----------New Value----') 
-            print(newValueData)
-            print('----------Reference Value----') 
-            print(referenceValueData)
-            relativeDifferenceData = relativeDifference(referenceValueData, newValueData)
+            #print('----------New Value----') 
+            #print(newValueData)
+            #print('----------Reference Value----') 
+            #print(referenceValueData)
+            relativeDifferenceData = relativeDifference(newValueData, referenceValueData)
             
             saveFileLocation = os.path.join(saveLocation, fileName)
             fop.saveToHDFFile(relativeDifferenceData, saveFileLocation)
             print('saved', saveFileLocation)
-            print(relativeDifferenceData)
+            #print(relativeDifferenceData)
     elif fileFrequency == 'single':
         newValueData = fop.readH5File(newValueFile)
         referenceValueData = fop.readH5File(referenceValueFile)
-        relativeDifferenceData = relativeDifference(referenceValueData, newValueData)
+        relativeDifferenceData = relativeDifference(newValueData, referenceValueData)
         fileName = name + '.h5'
         saveFileLocation = os.path.join(saveLocation, fileName)
         fop.saveToHDFFile(relativeDifferenceData, saveFileLocation)
         print('saved', saveFileLocation)
-        print(relativeDifferenceData)
+        #print(relativeDifferenceData)
             
 def findMovingAverage(metadata):
     fileFrequency = getFileFrequency(metadata)
@@ -361,7 +634,7 @@ def findMovingAverage(metadata):
         for year in analysisPeriod:
             data = getConsecutiveFilesCombined(filePath, year)
             dateTimeIndexColumn = getDateIndexColumn(data)
-            print(dateTimeIndexColumn)
+            #print(dateTimeIndexColumn)
             movingAvg = movingAverage(data, dateTimeIndexColumn,  groupBy=groupBy, minPeriod=minimumPeriod, windowSize=windowSize)
             movingAvg = movingAvg[pd.to_datetime(movingAvg.index.get_level_values(dateTimeIndexColumn)).year == year]
                         
@@ -372,14 +645,14 @@ def findMovingAverage(metadata):
     elif fileFrequency == 'single':
         data = fop.readH5File(filePath)
         dateTimeIndexColumn = getDateIndexColumn(data)
-        print(dateTimeIndexColumn)
+        #print(dateTimeIndexColumn)
         movingAvg = movingAverage(data, dateTimeIndexColumn,  groupBy=groupBy, minPeriod=minimumPeriod, windowSize=windowSize)
                     
         fileName = name+'.h5'
         saveFileLocation = os.path.join(saveLocation, fileName)
         fop.saveToHDFFile(movingAvg, saveFileLocation)
         print('saved', saveFileLocation)
-        print(movingAvg)
+        #print(movingAvg)
 
 def getColumnAxis(metadata):
     groupBy = getGroupByArgument(metadata)
@@ -394,7 +667,7 @@ def getColumnAxis(metadata):
             break
     elif fileFrequency == 'single':
         data = fop.readH5File(filePath)
-    print(data)    
+    #print(data)    
     axis = None
     columnName = None
     if groupBy == 'date' or groupBy == 'season':
@@ -419,22 +692,22 @@ def findMean(metadata):
     saveLocation = getProcessSaveLocation(operation, name)
     os.makedirs(saveLocation, exist_ok = True)
     (columnName, axis) = getColumnAxis(metadata)  
-    print(columnName, axis)
+    #print(columnName, axis)
     if fileFrequency == 'yearly':
         for year in analysisPeriod:
             fileName = str(year) + '.h5'
             dataFileLocation = os.path.join(filePath, fileName)
             data = fop.readH5File(dataFileLocation)
-            print(data)
+            #print(data)
             meanData = data.groupby(level = columnName, axis = axis).mean()
-            print(meanData)
+            #print(meanData)
             
             fileName = str(year)+'.h5'
             saveFileLocation = os.path.join(saveLocation, fileName)
             fop.saveToHDFFile(meanData, saveFileLocation)
             print('saved', saveFileLocation)
     elif fileFrequency == 'single':
-        print(filePath)
+        #print(filePath)
         data = fop.readH5File(filePath)
         meanData = pd.DataFrame()
         if groupBy == 'season':
@@ -446,7 +719,7 @@ def findMean(metadata):
         saveFileLocation = os.path.join(saveLocation, fileName)
         fop.saveToHDFFile(meanData, saveFileLocation)
         print('saved', saveFileLocation)
-        print(meanData)   
+        #print(meanData)   
         
         
         
@@ -468,7 +741,7 @@ def appendDataFiles(metadata):
     saveFileLocation = os.path.join(saveLocation, fileName)
     fop.saveToHDFFile(combinedData, saveFileLocation)
     print('saved', saveFileLocation) 
-    print(combinedData)
+    #print(combinedData)
 
 def adjustData(data, threshold=-9999):
     data = data.fillna(0)
@@ -499,12 +772,12 @@ def findCorrelation(metadata):
     data_2 = adjustData(data_2, data_2Max)
     if data_2Attributes != None:
         data_2 =data_2[data_2Attributes]
-    print(data_2)
+    #print(data_2)
     
     windowSize = getValueFromDict(metadata, 'windowSize')
-    print(windowSize)
+    #print(windowSize)
     crossCorr = data_1.rolling(windowSize).corr(data_2)
-    print(crossCorr)
+    #print(crossCorr)
     fileName = name + '.h5'
     saveFileLocation = os.path.join(saveLocation, fileName)
     fop.saveToHDFFile(crossCorr, saveFileLocation)
@@ -527,7 +800,7 @@ def gaussianWindowNormalisation(parameter_1, parameter_2, windowSize):
         corrNorm = param_1_norm.corrwith(param_2_norm.shift(0))
         i_shift = int(shift) + int(windowSize/2)
         if i_shift < len(norm):
-            print(i_shift)
+            #print(i_shift)
             norm.iloc[i_shift] = corrNorm
         
     return norm
@@ -551,19 +824,19 @@ def findNormalisedCorrelation(metadata):
     data_1 = adjustData(data_1, data_1Max)
     if data_1Attributes != None:
         data_1 =data_1[data_1Attributes]
-    print(data_1)
+    #print(data_1)
     data_2 = fop.readH5File(data_2Loc)
     data_2 = adjustData(data_2, data_2Max)
     if data_2Attributes != None:
         data_2 =data_2[data_2Attributes]
-    print(data_2)
+    #print(data_2)
     
     windowSize = getValueFromDict(metadata, 'windowSize')
-    print(windowSize)
+    #print(windowSize)
     
     normCorrelation = gaussianWindowNormalisation(data_1, data_2, windowSize)
     
-    print(normCorrelation)
+    #print(normCorrelation)
     fileName = name + '.h5'
     saveFileLocation = os.path.join(saveLocation, fileName)
     fop.saveToHDFFile(normCorrelation, saveFileLocation)
@@ -573,9 +846,9 @@ def findNormalisedCorrelation(metadata):
 def confidenceInterval(data):
     XCorr = data
     z = np.arctanh(XCorr)
-    sig2 = 1 /90
-    upperConfInterval = np.tanh(z + 1.96 * np.sqrt(sig2))
-    lowerConfInterval = np.tanh(z - 1.96 * np.sqrt(sig2))
+    se = 1/np.sqrt(90-3)
+    upperConfInterval = np.tanh(z + 1.96 * se)
+    lowerConfInterval = np.tanh(z - 1.96 * se)
     
     return (lowerConfInterval, upperConfInterval)
 
@@ -587,11 +860,11 @@ def findConfidenceInterval(metadata):
     os.makedirs(saveLocation, exist_ok = True)
     
     data = fop.readH5File(filePath)
-    print('-------------Conf interval data-----------------------')
-    print(data)
+    #print('-------------Conf interval data-----------------------')
+    #print(data)
     (lowerConfInterval, upperConfInterval) = confidenceInterval(data)
-    print('----------------upper and lower---------------')
-    print(lowerConfInterval, upperConfInterval)
+    #print('----------------upper and lower limits---------------')
+    #print(lowerConfInterval, upperConfInterval)
     lowerConfIntervalFile = name + '_' + 'lowerConfInterval' + '.h5'
     upperConfIntervalFile = name + '_' + 'upperConfInterval' + '.h5'
     lowerLimitFile = os.path.join(saveLocation, lowerConfIntervalFile)
@@ -605,8 +878,7 @@ def computeSeasonalMean(data, indexColumn):
                          pd.to_datetime(data.index.get_level_values(indexColumn)).day]).mean()
     mean.index.names = ['month', 'day']
     return mean
-
-          
+      
     
 if __name__ == "__main__":
     configFilePath = sys.argv[1]

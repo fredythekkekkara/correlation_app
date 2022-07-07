@@ -27,5 +27,10 @@ class fileResolution(Enum):
     singleFile = 'Single File'
     dailyFile = 'Daily File'
     yearlyFile = 'Yearly File'
+    
+class plotType(Enum):
+    line = 'Line'
+    fillBetween = 'Fill Between'
+    colorBar = 'Color Bar'
 
     
