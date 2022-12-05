@@ -575,10 +575,13 @@ def movingAverage(data, dateTimeIndexColumn, groupBy=None, minPeriod=1, windowSi
 
 def relativeDifference(finalValue, initialValue):
     print(finalValue, initialValue)
-    diffRel = ((finalValue - initialValue)/initialValue)*100
+    #diffRel = ((finalValue - initialValue)/initialValue)*100 #((moving_avg - original_value)/ original_value) *100
+    diffRel = ((initialValue - finalValue)/finalValue)*100 #((original_value - moving_avg)/ moving_avg) *100
     return diffRel
 
-
+def getShiftValue(windowSize):
+   return int(windowSize/2)*-1
+    
 def findRelativeDifference(metadata):
     fileFrequency = getFileFrequency(metadata)
     newValueFile = getNewValueFilePath(metadata)
@@ -623,6 +626,7 @@ def findMovingAverage(metadata):
     fileFrequency = getFileFrequency(metadata)
     filePath = getDataFileLocation(metadata)
     windowSize = getWindowSize(metadata)
+    shiftValue = getShiftValue(windowSize)
     minimumPeriod = getMinPeriod(metadata)
     operation = getOperation(metadata)
     name = getDataName(metadata)
@@ -635,7 +639,7 @@ def findMovingAverage(metadata):
             data = getConsecutiveFilesCombined(filePath, year)
             dateTimeIndexColumn = getDateIndexColumn(data)
             #print(dateTimeIndexColumn)
-            movingAvg = movingAverage(data, dateTimeIndexColumn,  groupBy=groupBy, minPeriod=minimumPeriod, windowSize=windowSize)
+            movingAvg = movingAverage(data, dateTimeIndexColumn,  groupBy=groupBy, minPeriod=minimumPeriod, windowSize=windowSize).shift(shiftValue)
             movingAvg = movingAvg[pd.to_datetime(movingAvg.index.get_level_values(dateTimeIndexColumn)).year == year]
                         
             fileName = str(year)+'.h5'
@@ -646,7 +650,7 @@ def findMovingAverage(metadata):
         data = fop.readH5File(filePath)
         dateTimeIndexColumn = getDateIndexColumn(data)
         #print(dateTimeIndexColumn)
-        movingAvg = movingAverage(data, dateTimeIndexColumn,  groupBy=groupBy, minPeriod=minimumPeriod, windowSize=windowSize)
+        movingAvg = movingAverage(data, dateTimeIndexColumn,  groupBy=groupBy, minPeriod=minimumPeriod, windowSize=windowSize).shift(shiftValue)
                     
         fileName = name+'.h5'
         saveFileLocation = os.path.join(saveLocation, fileName)
@@ -776,7 +780,7 @@ def findCorrelation(metadata):
     
     windowSize = getValueFromDict(metadata, 'windowSize')
     #print(windowSize)
-    crossCorr = data_1.rolling(windowSize).corr(data_2)
+    crossCorr = data_1.rolling(windowSize).corr(data_2).shift(int(windowSize/2)*-1)
     #print(crossCorr)
     fileName = name + '.h5'
     saveFileLocation = os.path.join(saveLocation, fileName)
