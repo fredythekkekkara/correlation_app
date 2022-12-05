@@ -1,2 +1,0 @@
-2022-03-02 17:02:40.526099	Can not read file: C:\Users\davi_fr\Documents\Project_1\data\tec_1hr\2011\gps_tec1hr_igs_20110722_v01.cdf
-2022-03-02 22:18:37.789500	Can not read file: C:\Users\davi_fr\Documents\Project_1\data\tec_1hr\1999\gps_tec1hr_igs_19990207_v01.cdf
